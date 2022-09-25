@@ -145,6 +145,23 @@ func robotControl() {
 	}
 
 	for {
+		// save the current image to a file
+		if ebiten.IsKeyPressed(ebiten.KeyS) {
+			// save the current image to a file
+			// retrieve the image from the channel
+			imageFromCamera := <-cameraData
+			// convert to image to an ebiten image
+			// save the image to a file, write bytes to file
+			err := os.WriteFile(fmt.Sprintf("scout-%s.jpg", time.Now().Format("2006-01-02-15-04-05")), imageFromCamera, 0644)
+
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				log.Println("Image saved")
+			}
+
+		}
+
 		if ebiten.IsKeyPressed(ebiten.KeyH) {
 			scoutGoHome()
 			// if so, increase the forward speed
