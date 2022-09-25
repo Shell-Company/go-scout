@@ -30,7 +30,6 @@ func scoutGoHome() {
 		panic(err)
 	}
 	defer n.Close()
-
 	// create a service client
 	cl, err := goroslib.NewServiceClient(goroslib.ServiceClientConf{
 		Node: n,
@@ -42,7 +41,6 @@ func scoutGoHome() {
 		log.Println("An error occured while trying to send the bot home", err)
 	}
 	defer cl.Close()
-
 	// call the service
 	req := goHomeRequest{}
 	res := goHomeResponse{}
@@ -51,7 +49,5 @@ func scoutGoHome() {
 	if err != nil {
 		panic(err)
 	}
-	if *flagVerbose {
-		log.Println("Command received, scout returning home")
-	}
+	log.Println("Command received: Scout returning home in 5 seconds")
 }
