@@ -24,8 +24,10 @@ var (
 	cameraData         = make(chan []byte)
 	controlData        string
 	ROSHostAddress     = "192.168.1.224:11311"
-	WindowX            = 1920
-	WindowY            = 1080
+	flagWindowX        = flag.Int("windowX", 1920, "window width")
+	flagWindowY        = flag.Int("windowY", 1080, "window height")
+	WindowX            int
+	WindowY            int
 	flagROSHostAddress = flag.String("h", ROSHostAddress, "ROS endpoint such as IP_ADDRESS:PORT")
 	flagVerbose        = flag.Bool("v", false, "verbose")
 	joystickLeftX      float64
@@ -44,6 +46,8 @@ const (
 	Frame_AUDIO_STREAM_AAC  int8 = 2
 )
 
+type Game struct{}
+
 func (g *Game) Draw(screen *ebiten.Image) {
 	// retrieve the image from the channel
 	imageFromCamera := <-cameraData
@@ -61,6 +65,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 func main() {
 	flag.Parse()
 
+	WindowX = *flagWindowX
+	WindowY = *flagWindowY
 	// Start up messages
 	fmt.Println("Starting go-scout controller for Moorebot Scout")
 	fmt.Println("ROS endpoint:", *flagROSHostAddress)
@@ -75,7 +81,7 @@ func main() {
 
 	// create a node
 	if *flagVerbose {
-		log.Println(fmt.Sprintln("creating camera access node using %s", *flagROSHostAddress))
+		log.Println(fmt.Sprintf("creating camera access node using %s", *flagROSHostAddress))
 	}
 	n, err := goroslib.NewNode(goroslib.NodeConf{
 		Name:          "scout-camera-access",
@@ -91,7 +97,7 @@ func main() {
 		Node:      n,
 		Topic:     "/CoreNode/jpg",
 		Callback:  onMessageFrame,
-		QueueSize: 1,
+		QueueSize: 0,
 	}
 
 	sub, err := goroslib.NewSubscriber(subby)
@@ -115,14 +121,11 @@ func main() {
 func onMessageFrame(msg *Frame) {
 	// write camera data to channel
 	cameraData <- msg.Data
-
 }
 
 // robotControl is a goroutine that will read the joystick and publish the control data to the robot
 func robotControl() {
-	flag.Parse()
 	ROSHostAddress = *flagROSHostAddress
-
 	// create a node and connect to the master
 	n, err := goroslib.NewNode(goroslib.NodeConf{
 		Name:          "scout-controller",
@@ -142,6 +145,12 @@ func robotControl() {
 	}
 
 	for {
+		// check if user pressed the l key
+		if ebiten.IsKeyPressed(ebiten.KeyL) {
+			turnOnLight()
+			// if so, increase the forward speed
+		}
+
 		state, err := js.Read()
 		if err != nil {
 			panic(err)
@@ -249,8 +258,6 @@ func squashToFloat(n int) (f float64) {
 	return f * .5
 }
 
-type Game struct{}
-
 // Frame is a struct that holds the image data from the camera topic roller_bot/frame
 type Frame struct {
 	msg.Package     `ros:"roller_eye"`
@@ -265,4 +272,57 @@ type Frame struct {
 	Par3            int32
 	Par4            int32
 	Data            []uint8
+}
+
+type adjustLightRequest struct {
+	Cmd int32 `ros:"cmd int32"`
+}
+
+type adjustLightResponse struct {
+}
+
+type adjustLightService struct {
+	msg.Package `ros:"/CoreNode/adjust_light"`
+	Request     adjustLightRequest
+	Response    adjustLightResponse
+}
+
+// call the /CoreNode/adjust_light service with a value of 1 to turn on the light
+func turnOnLight() {
+	// create a node and connect to the master
+	n, err := goroslib.NewNode(goroslib.NodeConf{
+		Name:          "scout-lights",
+		MasterAddress: *flagROSHostAddress,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer n.Close()
+	// interface for the service with a value of 1
+
+	// create a service client
+	cl, err := goroslib.NewServiceClient(goroslib.ServiceClientConf{
+		Node: n,
+		Name: "/CoreNode/adjust_light",
+		Srv: &adjustLightService{
+			Request: adjustLightRequest{
+				Cmd: 0,
+			},
+		}})
+	if err != nil {
+		panic(err)
+	}
+	defer cl.Close()
+
+	// call the service
+	req := adjustLightRequest{
+		Cmd: 0,
+	}
+	res := adjustLightResponse{}
+
+	err = cl.Call(&req, &res)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
 }
