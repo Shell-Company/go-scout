@@ -25,6 +25,22 @@ git clone https://github.com/shell-company/go-scout && cd go-scout && go build
 
 To use go-scout, connect an XBOX controller to your computer and launch the application. The left stick is used for forward, reverse, and turning left or right. The right stick is used for strafing. The left bumper lowers the max speed, the right bumper raises max speed. Both bumpers pressed together tell the robot to stop moving. The start button exits the application.
 
+## Controls
+
+| Button | Action |
+| --- | --- |
+| Left Stick | Forward, Reverse, Left, Right |
+| Right Stick | Strafe |
+| Left Bumper | Lower Max Speed |
+| Right Bumper | Raise Max Speed |
+| Both Bumpers | Stop |
+| Start | Exit |
+| Keyboard 0 | -Night Vision brightness |
+| Keyboard 9 | +Night Vision brightness |
+| Keyboard s | Save image to disk |
+| Keyboard h | Return to charging station |
+
+
 ```
 Usage of ./scout:
   -h string

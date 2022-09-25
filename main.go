@@ -24,8 +24,10 @@ var (
 	cameraData         = make(chan []byte)
 	controlData        string
 	ROSHostAddress     = "192.168.1.224:11311"
-	WindowX            = 1920
-	WindowY            = 1080
+	flagWindowX        = flag.Int("windowX", 1920, "window width")
+	flagWindowY        = flag.Int("windowY", 1080, "window height")
+	WindowX            int
+	WindowY            int
 	flagROSHostAddress = flag.String("h", ROSHostAddress, "ROS endpoint such as IP_ADDRESS:PORT")
 	flagVerbose        = flag.Bool("v", false, "verbose")
 	joystickLeftX      float64
@@ -44,6 +46,8 @@ const (
 	Frame_AUDIO_STREAM_AAC  int8 = 2
 )
 
+type Game struct{}
+
 func (g *Game) Draw(screen *ebiten.Image) {
 	// retrieve the image from the channel
 	imageFromCamera := <-cameraData
@@ -61,6 +65,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 func main() {
 	flag.Parse()
 
+	WindowX = *flagWindowX
+	WindowY = *flagWindowY
 	// Start up messages
 	fmt.Println("Starting go-scout controller for Moorebot Scout")
 	fmt.Println("ROS endpoint:", *flagROSHostAddress)
@@ -75,7 +81,7 @@ func main() {
 
 	// create a node
 	if *flagVerbose {
-		log.Println(fmt.Sprintln("creating camera access node using %s", *flagROSHostAddress))
+		log.Println(fmt.Sprintf("creating camera access node using %s", *flagROSHostAddress))
 	}
 	n, err := goroslib.NewNode(goroslib.NodeConf{
 		Name:          "scout-camera-access",
@@ -91,7 +97,7 @@ func main() {
 		Node:      n,
 		Topic:     "/CoreNode/jpg",
 		Callback:  onMessageFrame,
-		QueueSize: 1,
+		QueueSize: 0,
 	}
 
 	sub, err := goroslib.NewSubscriber(subby)
@@ -115,14 +121,11 @@ func main() {
 func onMessageFrame(msg *Frame) {
 	// write camera data to channel
 	cameraData <- msg.Data
-
 }
 
 // robotControl is a goroutine that will read the joystick and publish the control data to the robot
 func robotControl() {
-	flag.Parse()
 	ROSHostAddress = *flagROSHostAddress
-
 	// create a node and connect to the master
 	n, err := goroslib.NewNode(goroslib.NodeConf{
 		Name:          "scout-controller",
@@ -142,6 +145,36 @@ func robotControl() {
 	}
 
 	for {
+		// save the current image to a file
+		if ebiten.IsKeyPressed(ebiten.KeyS) {
+			// save the current image to a file
+			// retrieve the image from the channel
+			imageFromCamera := <-cameraData
+			// convert to image to an ebiten image
+			// save the image to a file, write bytes to file
+			err := os.WriteFile(fmt.Sprintf("scout-%s.jpg", time.Now().Format("2006-01-02-15-04-05")), imageFromCamera, 0644)
+
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				log.Println("Image saved")
+			}
+
+		}
+
+		if ebiten.IsKeyPressed(ebiten.KeyH) {
+			scoutGoHome()
+			// if so, increase the forward speed
+		}
+		if ebiten.IsKeyPressed(ebiten.Key9) {
+			turnOnLight(0)
+			// if so, increase the forward speed
+		}
+		if ebiten.IsKeyPressed(ebiten.Key0) {
+			turnOnLight(1)
+			// if so, increase the forward speed
+		}
+
 		state, err := js.Read()
 		if err != nil {
 			panic(err)
@@ -248,8 +281,6 @@ func squashToFloat(n int) (f float64) {
 	}
 	return f * .5
 }
-
-type Game struct{}
 
 // Frame is a struct that holds the image data from the camera topic roller_bot/frame
 type Frame struct {
