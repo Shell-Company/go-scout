@@ -1,28 +1,29 @@
 package main
 
 import (
+	"log"
+
 	"github.com/aler9/goroslib"
 	"github.com/aler9/goroslib/pkg/msg"
 )
 
-type adjustLightRequest struct {
-	Cmd int32 `ros:"cmd int32"`
+type goHomeRequest struct {
 }
 
-type adjustLightResponse struct {
+type goHomeResponse struct {
 }
 
-type adjustLightService struct {
-	msg.Package `ros:"/CoreNode/adjust_light"`
-	Request     adjustLightRequest
-	Response    adjustLightResponse
+type goHomeService struct {
+	msg.Package `ros:"/nav_low_bat"`
+	Request     goHomeRequest
+	Response    goHomeResponse
 }
 
 // call the /CoreNode/adjust_light service with a value of 1 to turn on the light
-func turnOnLight(lightValue int32) {
+func scoutGoHome() {
 	// create a node and connect to the master
 	n, err := goroslib.NewNode(goroslib.NodeConf{
-		Name:          "scout-lights",
+		Name:          "scout-go-home",
 		MasterAddress: *flagROSHostAddress,
 	})
 	if err != nil {
@@ -33,25 +34,24 @@ func turnOnLight(lightValue int32) {
 	// create a service client
 	cl, err := goroslib.NewServiceClient(goroslib.ServiceClientConf{
 		Node: n,
-		Name: "/CoreNode/adjust_light",
-		Srv: &adjustLightService{
-			Request: adjustLightRequest{
-				Cmd: lightValue,
-			},
+		Name: "/nav_low_bat",
+		Srv: &goHomeService{
+			Request: goHomeRequest{},
 		}})
 	if err != nil {
-		panic(err)
+		log.Println("An error occured while trying to send the bot home", err)
 	}
 	defer cl.Close()
 
 	// call the service
-	req := adjustLightRequest{
-		Cmd: lightValue,
-	}
-	res := adjustLightResponse{}
+	req := goHomeRequest{}
+	res := goHomeResponse{}
 
 	err = cl.Call(&req, &res)
 	if err != nil {
 		panic(err)
+	}
+	if *flagVerbose {
+		log.Println("Command received, scout returning home")
 	}
 }
