@@ -64,9 +64,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// draw the image on the screen
 	screen.DrawImage(cameraFeed, nil)
 	// print some HUD data
+	controlData = fmt.Sprintf("lX: %f lY: %f rX:%f rY:%f speedModifier:%f", joystickLeftX, joystickLeftY, joystickRightX, joystickRightY, forwardSpeed)
 	ebitenutil.DebugPrint(screen, controlData)
-
+	// print bottom HUD data
+	ebitenutil.DebugPrintAt(screen, "🥷 Scout 🤖", 10, WindowY-20)
 }
+
 func main() {
 	flag.Parse()
 
@@ -137,12 +140,6 @@ func onMessageFrame(msg *Frame) {
 
 // robotControl is a goroutine that will read the joystick and publish the control data to the robot
 func robotControl() {
-	ROSHostAddress = *flagROSHostAddress
-	// create a node and connect to the master
-
-	if err != nil {
-		panic(err)
-	}
 	// Print gamepad status and pos
 	jsid := 0
 	js, err := joystick.Open(jsid)
@@ -187,8 +184,6 @@ func robotControl() {
 			joystickRightY = 0
 		}
 
-		// write message to channel
-		controlData = fmt.Sprintf("lX: %f lY: %f rX:%f rY:%f speedModifier:%f", joystickLeftX, joystickLeftY, joystickRightX, joystickRightY, forwardSpeed)
 		// forward speed to hud data
 		buttonPress := state.Buttons
 		if *flagVerbose {
@@ -255,7 +250,6 @@ func robotControl() {
 
 // robotControlKeyboard is a goroutine that will read the keyboard and publish the control data to the robot
 func robotControlKeyboard() {
-	ROSHostAddress = *flagROSHostAddress
 	for {
 		// exit the program
 		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
@@ -300,6 +294,18 @@ func robotControlKeyboard() {
 		if ebiten.IsKeyPressed(ebiten.KeySpace) {
 			saveScreenshot()
 		}
+		// max speed
+		if ebiten.IsKeyPressed(ebiten.KeyP) {
+			if forwardSpeed < maxForwardSpeed {
+				forwardSpeed += +.1
+			}
+		}
+		// min speed
+		if ebiten.IsKeyPressed(ebiten.KeyO) {
+			if forwardSpeed > minForwardSpeed {
+				forwardSpeed += -.1
+			}
+		}
 
 		msg := &geometry_msgs.Twist{
 			Linear: geometry_msgs.Vector3{
@@ -327,8 +333,6 @@ func robotControlKeyboard() {
 		time.Sleep(time.Millisecond * 180)
 		pub.Close()
 
-		// write message to channel
-		controlData = fmt.Sprintf("lX: %f lY: %f rX:%f rY:%f speedModifier:%f", joystickLeftX, joystickLeftY, joystickRightX, joystickRightY, forwardSpeed)
 	}
 }
 
