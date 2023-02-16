@@ -31,6 +31,7 @@ var (
 	WindowY            int
 	flagROSHostAddress = flag.String("h", ROSHostAddress, "ROS endpoint such as IP_ADDRESS:PORT")
 	flaglocalhost      = flag.String("l", localhostAddress, "localhost address")
+	flagControlScheme  = flag.String("c", "keyboard", "control scheme, keyboard or joystick")
 	flagVerbose        = flag.Bool("v", false, "verbose")
 	joystickLeftX      float64
 	joystickLeftY      float64
@@ -114,7 +115,11 @@ func main() {
 	defer sub.Close()
 
 	// init robo controller
-	go robotControl()
+	if *flagControlScheme == "joystick" {
+		go robotControl()
+	} else {
+		go robotControlKeyboard()
+	}
 
 	ebiten.SetWindowSize(WindowX, WindowY)
 	ebiten.SetWindowTitle("🥷 Scout 🤖")
@@ -138,8 +143,6 @@ func robotControl() {
 	if err != nil {
 		panic(err)
 	}
-	defer n.Close()
-
 	// Print gamepad status and pos
 	jsid := 0
 	js, err := joystick.Open(jsid)
@@ -150,19 +153,8 @@ func robotControl() {
 
 	for {
 		// save the current image to a file
-		if ebiten.IsKeyPressed(ebiten.KeyS) {
-			// save the current image to a file
-			// retrieve the image from the channel
-			imageFromCamera := <-cameraData
-			// convert to image to an ebiten image
-			// save the image to a file, write bytes to file
-			err := os.WriteFile(fmt.Sprintf("scout-%s.jpg", time.Now().Format("2006-01-02-15-04-05")), imageFromCamera, 0644)
-
-			if err != nil {
-				fmt.Println(err)
-			} else {
-				log.Println("Image saved")
-			}
+		if ebiten.IsKeyPressed(ebiten.KeySpace) {
+			saveScreenshot()
 
 		}
 
@@ -261,6 +253,85 @@ func robotControl() {
 	}
 }
 
+// robotControlKeyboard is a goroutine that will read the keyboard and publish the control data to the robot
+func robotControlKeyboard() {
+	ROSHostAddress = *flagROSHostAddress
+	for {
+		// exit the program
+		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+			os.Exit(0)
+		}
+		// keyboard control w,s,a,d, q,e, space for screenshot, h for home, 9 for light 1, 0 for light 2
+		if ebiten.IsKeyPressed(ebiten.KeyW) {
+			joystickLeftY = 1
+		} else if ebiten.IsKeyPressed(ebiten.KeyS) {
+			joystickLeftY = -1
+		} else {
+			joystickLeftY = 0
+		}
+
+		if ebiten.IsKeyPressed(ebiten.KeyA) {
+			joystickLeftX = -1
+		} else if ebiten.IsKeyPressed(ebiten.KeyD) {
+			joystickLeftX = 1
+		} else {
+			joystickLeftX = 0
+		}
+
+		if ebiten.IsKeyPressed(ebiten.KeyQ) {
+			joystickRightX = -1
+		} else if ebiten.IsKeyPressed(ebiten.KeyE) {
+			joystickRightX = 1
+		} else {
+			joystickRightX = 0
+		}
+
+		// add all controls from the joystiock function
+		if ebiten.IsKeyPressed(ebiten.KeyH) {
+			scoutGoHome()
+		}
+		if ebiten.IsKeyPressed(ebiten.Key9) {
+			turnOnLight(0)
+		}
+		if ebiten.IsKeyPressed(ebiten.Key0) {
+			turnOnLight(1)
+		}
+		// screenshot
+		if ebiten.IsKeyPressed(ebiten.KeySpace) {
+			saveScreenshot()
+		}
+
+		msg := &geometry_msgs.Twist{
+			Linear: geometry_msgs.Vector3{
+				X: joystickRightX * .2,          // strafe l r
+				Y: joystickLeftY * forwardSpeed, // move fwd/back
+			},
+			Angular: geometry_msgs.Vector3{
+				Z: joystickLeftX * -1.8, // rotate l r
+			},
+		}
+
+		// create a publisher
+		pub, err = goroslib.NewPublisher(goroslib.PublisherConf{
+			Node:  n,
+			Topic: "/cmd_vel",
+			Msg:   msg,
+			Latch: true,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		// send the message to the robot
+		pub.Write(msg)
+		// wait a bit
+		time.Sleep(time.Millisecond * 180)
+		pub.Close()
+
+		// write message to channel
+		controlData = fmt.Sprintf("lX: %f lY: %f rX:%f rY:%f speedModifier:%f", joystickLeftX, joystickLeftY, joystickRightX, joystickRightY, forwardSpeed)
+	}
+}
+
 func (g *Game) Update() error {
 	return nil
 }
@@ -300,4 +371,19 @@ type Frame struct {
 	Par3            int32
 	Par4            int32
 	Data            []uint8
+}
+
+func saveScreenshot() {
+	// save the current image to a file
+	// retrieve the image from the channel
+	imageFromCamera := <-cameraData
+	// convert to image to an ebiten image
+	// save the image to a file, write bytes to file
+	err := os.WriteFile(fmt.Sprintf("scout-%s.jpg", time.Now().Format("2006-01-02-15-04-05")), imageFromCamera, 0644)
+
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		log.Println("Image saved")
+	}
 }
