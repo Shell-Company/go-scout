@@ -24,11 +24,13 @@ var (
 	cameraData         = make(chan []byte)
 	controlData        string
 	ROSHostAddress     = "192.168.1.224:11311"
+	localhostAddress   = "127.0.0.1"
 	flagWindowX        = flag.Int("windowX", 1920, "window width")
 	flagWindowY        = flag.Int("windowY", 1080, "window height")
 	WindowX            int
 	WindowY            int
 	flagROSHostAddress = flag.String("h", ROSHostAddress, "ROS endpoint such as IP_ADDRESS:PORT")
+	flaglocalhost      = flag.String("l", localhostAddress, "localhost address")
 	flagVerbose        = flag.Bool("v", false, "verbose")
 	joystickLeftX      float64
 	joystickLeftY      float64
@@ -38,6 +40,8 @@ var (
 	forwardSpeed       = .2
 	maxForwardSpeed    = 1.0
 	minForwardSpeed    = 0.1
+	n                  *goroslib.Node
+	err                error
 )
 
 const (
@@ -65,6 +69,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 func main() {
 	flag.Parse()
 
+	n, err = goroslib.NewNode(goroslib.NodeConf{
+		Name:          "scout-access",
+		MasterAddress: *flagROSHostAddress,
+		Host:          "192.168.1.220",
+	})
+
 	WindowX = *flagWindowX
 	WindowY = *flagWindowY
 	// Start up messages
@@ -83,10 +93,7 @@ func main() {
 	if *flagVerbose {
 		log.Println(fmt.Sprintf("creating camera access node using %s", *flagROSHostAddress))
 	}
-	n, err := goroslib.NewNode(goroslib.NodeConf{
-		Name:          "scout-camera-access",
-		MasterAddress: *flagROSHostAddress,
-	})
+
 	if err != nil {
 		panic(err)
 	}
@@ -127,10 +134,7 @@ func onMessageFrame(msg *Frame) {
 func robotControl() {
 	ROSHostAddress = *flagROSHostAddress
 	// create a node and connect to the master
-	n, err := goroslib.NewNode(goroslib.NodeConf{
-		Name:          "scout-controller",
-		MasterAddress: *flagROSHostAddress,
-	})
+
 	if err != nil {
 		panic(err)
 	}
