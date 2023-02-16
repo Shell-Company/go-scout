@@ -25,7 +25,16 @@ git clone https://github.com/shell-company/go-scout && cd go-scout && go build
 
 To use go-scout, connect an XBOX controller to your computer and launch the application. The left stick is used for forward, reverse, and turning left or right. The right stick is used for strafing. The left bumper lowers the max speed, the right bumper raises max speed. Both bumpers pressed together tell the robot to stop moving. The start button exits the application.
 
+
+Note: This version will not try to automatically determine your local IP address. You must specify it using the `-l` flag. This was to get around a restriction  where the robot will not connect to the computer if the IP address is not in the same subnet as the robot. 
+
+Using the -l flag you are now able to connect to a remotely hosted ROS endpoint. This is useful if you want to run the robot from a remote location and control it from your computer.
+
+
+```
+
 ## Controls
+-c joystick
 
 | Button | Action |
 | --- | --- |
@@ -37,19 +46,43 @@ To use go-scout, connect an XBOX controller to your computer and launch the appl
 | Start | Exit |
 | Keyboard 0 | -Night Vision brightness |
 | Keyboard 9 | +Night Vision brightness |
-| Keyboard s | Save image to disk |
+| Keyboard Space | Save image to disk |
 | Keyboard h | Return to charging station |
 
+-c keyboard
+
+| Button | Action |
+| --- | --- |
+| W | Forward |
+| S | Reverse |
+| A | Left |
+| D | Right |
+| Q | Strafe Left |
+| E | Strafe Right |
+| H | Return to charging station |
+| Space | Screenshot |
+|  0 | -Night Vision brightness |
+|  9 | +Night Vision brightness |
+| Left Shift | Lower Max Speed |
+| Left Ctrl | Raise Max Speed |
+| Esc | Exit |
 
 ```
 Usage of ./scout:
+  -c string
+    	control scheme, keyboard or joystick (default "keyboard")
   -h string
     	ROS endpoint such as IP_ADDRESS:PORT (default "192.168.1.224:11311")
+  -l string
+    	localhost address (default "192.168.1.211")
   -v	verbose
-  
+  -windowX int
+    	window width (default 1920)
+  -windowY int
+    	window height (default 1080)
 
 
-  ╰─$ ./scout -h "192.168.1.225:11311" 
+  ╰─$ ./scout -h "192.168.1.225:11311" -l 192.168.1.211 -c joystick
 Starting go-scout controller for Moorebot Scout
 ROS endpoint: 192.168.1.225:11311
 2022/09/02 15:49:54 Please connect a joystick
@@ -85,7 +118,7 @@ route add 118.107.244.35 gw 127.0.0.1 lo
 # 
 ## To-Do
 
-- Add support for other controllers
+
 - Create a proper Heads-Up-Display
 - Add support for more features of the robot
     - Add battery status to HUD
