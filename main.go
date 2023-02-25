@@ -12,6 +12,8 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/aler9/goroslib"
 	"github.com/aler9/goroslib/pkg/msg"
 	"github.com/aler9/goroslib/pkg/msgs/geometry_msgs"
@@ -21,28 +23,32 @@ import (
 )
 
 var (
-	cameraData         = make(chan []byte)
-	controlData        string
-	ROSHostAddress     = "192.168.1.224:11311"
-	localhostAddress   = "127.0.0.1"
-	flagWindowX        = flag.Int("windowX", 1920, "window width")
-	flagWindowY        = flag.Int("windowY", 1080, "window height")
-	WindowX            int
-	WindowY            int
-	flagROSHostAddress = flag.String("h", ROSHostAddress, "ROS endpoint such as IP_ADDRESS:PORT")
-	flaglocalhost      = flag.String("l", localhostAddress, "localhost address")
-	flagControlScheme  = flag.String("c", "keyboard", "control scheme, keyboard or joystick")
-	flagVerbose        = flag.Bool("v", false, "verbose")
-	joystickLeftX      float64
-	joystickLeftY      float64
-	joystickRightX     float64
-	joystickRightY     float64
-	pub                *goroslib.Publisher
-	forwardSpeed       = .2
-	maxForwardSpeed    = 1.0
-	minForwardSpeed    = 0.1
-	n                  *goroslib.Node
-	err                error
+	cameraData                    = make(chan []byte)
+	imageFromCamera               []byte
+	controlData                   string
+	ROSHostAddress                = "192.168.1.224:11311"
+	localhostAddress              = "127.0.0.1"
+	inferenceServerAddressAndPort = "localhost:8765"
+	flagWindowX                   = flag.Int("windowX", 1920, "window width")
+	flagWindowY                   = flag.Int("windowY", 1080, "window height")
+	WindowX                       int
+	WindowY                       int
+	flagROSHostAddress            = flag.String("h", ROSHostAddress, "ROS endpoint such as IP_ADDRESS:PORT")
+	flaglocalhost                 = flag.String("l", localhostAddress, "localhost address")
+	flagControlScheme             = flag.String("c", "keyboard", "control scheme, keyboard or joystick")
+	flagInferenceServer           = flag.String("ai-host", inferenceServerAddressAndPort, "inference server address and port")
+	flagVerbose                   = flag.Bool("v", false, "verbose")
+	flagRunAIModel                = flag.Bool("ai", false, "run AI model")
+	joystickLeftX                 float64
+	joystickLeftY                 float64
+	joystickRightX                float64
+	joystickRightY                float64
+	pub                           *goroslib.Publisher
+	forwardSpeed                  = .2
+	maxForwardSpeed               = 1.0
+	minForwardSpeed               = 0.1
+	n                             *goroslib.Node
+	err                           error
 )
 
 const (
@@ -55,7 +61,7 @@ type Game struct{}
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	// retrieve the image from the channel
-	imageFromCamera := <-cameraData
+	imageFromCamera = <-cameraData
 	// convert to image to an ebiten image
 	cameraFeed, _, err := ebitenutil.NewImageFromReader(bytes.NewReader(imageFromCamera))
 	if err != nil {
@@ -64,9 +70,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// draw the image on the screen
 	screen.DrawImage(cameraFeed, nil)
 	// print some HUD data
+	controlData = fmt.Sprintf("lX: %f lY: %f rX:%f rY:%f speedModifier:%f", joystickLeftX, joystickLeftY, joystickRightX, joystickRightY, forwardSpeed)
 	ebitenutil.DebugPrint(screen, controlData)
-
+	// print bottom HUD data
+	batteryLevel := fmt.Sprintf("Battery level %s", "100%")
+	ebitenutil.DebugPrintAt(screen, batteryLevel, 10, WindowY-20)
 }
+
 func main() {
 	flag.Parse()
 
@@ -74,8 +84,10 @@ func main() {
 		Name:          "scout-access",
 		MasterAddress: *flagROSHostAddress,
 		Host:          *flaglocalhost,
+		LogLevel: goroslib.LogLevel(
+			goroslib.LogLevelInfo,
+		),
 	})
-
 	WindowX = *flagWindowX
 	WindowY = *flagWindowY
 	// Start up messages
@@ -102,9 +114,10 @@ func main() {
 
 	// create a subscriber
 	subby := goroslib.SubscriberConf{
-		Node:      n,
-		Topic:     "/CoreNode/jpg",
-		Callback:  onMessageFrame,
+		Node:     n,
+		Topic:    "/CoreNode/jpg",
+		Callback: onMessageFrame,
+		// EnableKeepAlive: true,
 		QueueSize: 0,
 	}
 
@@ -125,29 +138,29 @@ func main() {
 	ebiten.SetWindowTitle("🥷 Scout 🤖")
 	ebiten.SetWindowResizable(true)
 	if err := ebiten.RunGame(&Game{}); err != nil {
-		log.Fatal(err)
+		log.Fatal("ebiten error", err)
 	}
 }
 
 // onMessageFrame is called when a message is received from the CoreNode/jpg topic (camera)
 func onMessageFrame(msg *Frame) {
+	//  run yolo on the image
 	// write camera data to channel
-	cameraData <- msg.Data
+	if *flagRunAIModel {
+		cameraData <- runAIModel(msg.Data)
+	} else {
+		cameraData <- msg.Data
+	}
+
 }
 
 // robotControl is a goroutine that will read the joystick and publish the control data to the robot
 func robotControl() {
-	ROSHostAddress = *flagROSHostAddress
-	// create a node and connect to the master
-
-	if err != nil {
-		panic(err)
-	}
 	// Print gamepad status and pos
 	jsid := 0
 	js, err := joystick.Open(jsid)
 	if err != nil {
-		log.Fatal("Please connect a joystick	")
+		log.Fatal("Please connect a joystick")
 
 	}
 
@@ -155,7 +168,6 @@ func robotControl() {
 		// save the current image to a file
 		if ebiten.IsKeyPressed(ebiten.KeySpace) {
 			saveScreenshot()
-
 		}
 
 		if ebiten.IsKeyPressed(ebiten.KeyH) {
@@ -187,8 +199,6 @@ func robotControl() {
 			joystickRightY = 0
 		}
 
-		// write message to channel
-		controlData = fmt.Sprintf("lX: %f lY: %f rX:%f rY:%f speedModifier:%f", joystickLeftX, joystickLeftY, joystickRightX, joystickRightY, forwardSpeed)
 		// forward speed to hud data
 		buttonPress := state.Buttons
 		if *flagVerbose {
@@ -243,7 +253,7 @@ func robotControl() {
 			Latch: true,
 		})
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("Publisher error ", err)
 		}
 		// send the message to the robot
 		pub.Write(msg)
@@ -255,7 +265,6 @@ func robotControl() {
 
 // robotControlKeyboard is a goroutine that will read the keyboard and publish the control data to the robot
 func robotControlKeyboard() {
-	ROSHostAddress = *flagROSHostAddress
 	for {
 		// exit the program
 		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
@@ -286,7 +295,7 @@ func robotControlKeyboard() {
 			joystickRightX = 0
 		}
 
-		// add all controls from the joystiock function
+		// add all controls from the joystick function
 		if ebiten.IsKeyPressed(ebiten.KeyH) {
 			scoutGoHome()
 		}
@@ -299,6 +308,25 @@ func robotControlKeyboard() {
 		// screenshot
 		if ebiten.IsKeyPressed(ebiten.KeySpace) {
 			saveScreenshot()
+		}
+		// enable AI mode
+		if ebiten.IsKeyPressed(ebiten.Key3) {
+			// toggle flagRunAIModel
+			*flagRunAIModel = !*flagRunAIModel
+			fmt.Println("AI Mode:", *flagRunAIModel)
+		}
+
+		// max speed
+		if ebiten.IsKeyPressed(ebiten.KeyP) {
+			if forwardSpeed < maxForwardSpeed {
+				forwardSpeed += +.1
+			}
+		}
+		// min speed
+		if ebiten.IsKeyPressed(ebiten.KeyO) {
+			if forwardSpeed > minForwardSpeed {
+				forwardSpeed += -.1
+			}
 		}
 
 		msg := &geometry_msgs.Twist{
@@ -319,7 +347,7 @@ func robotControlKeyboard() {
 			Latch: true,
 		})
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("Control publisher error", err)
 		}
 		// send the message to the robot
 		pub.Write(msg)
@@ -327,8 +355,6 @@ func robotControlKeyboard() {
 		time.Sleep(time.Millisecond * 180)
 		pub.Close()
 
-		// write message to channel
-		controlData = fmt.Sprintf("lX: %f lY: %f rX:%f rY:%f speedModifier:%f", joystickLeftX, joystickLeftY, joystickRightX, joystickRightY, forwardSpeed)
 	}
 }
 
@@ -376,7 +402,7 @@ type Frame struct {
 func saveScreenshot() {
 	// save the current image to a file
 	// retrieve the image from the channel
-	imageFromCamera := <-cameraData
+	imageFromCamera = <-cameraData
 	// convert to image to an ebiten image
 	// save the image to a file, write bytes to file
 	err := os.WriteFile(fmt.Sprintf("scout-%s.jpg", time.Now().Format("2006-01-02-15-04-05")), imageFromCamera, 0644)
@@ -386,4 +412,34 @@ func saveScreenshot() {
 	} else {
 		log.Println("Image saved")
 	}
+}
+
+// go function to send the image bytes to the server and get the image back
+
+func runAIModel(imageBytes []byte) (message []byte) {
+	// connect to the server hosting the model
+	conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%s", *flagInferenceServer), nil)
+	if err != nil {
+		log.Println("dial:", err)
+		log.Println("returning unmodified image")
+		return imageBytes
+	}
+	defer conn.Close()
+
+	// send the image bytes to the server
+	err = conn.WriteMessage(websocket.BinaryMessage, imageBytes)
+	if err != nil {
+		log.Println("write:", err)
+		return
+	}
+
+	// get the image bytes back from the server
+	_, message, err = conn.ReadMessage()
+	if err != nil {
+		log.Println("read:", err)
+		return
+	}
+	// close the connection
+	conn.Close()
+	return message
 }
