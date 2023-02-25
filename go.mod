@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/aler9/goroslib v0.0.0-20220831065204-cd7cf8973f37
+	github.com/gorilla/websocket v1.5.0
 	github.com/hajimehoshi/ebiten/v2 v2.4.0
 	github.com/simulatedsimian/joystick v1.0.1
 )
